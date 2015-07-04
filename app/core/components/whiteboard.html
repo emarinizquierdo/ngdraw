@@ -1,0 +1,189 @@
+<dom-module name="white-board">
+    <template>
+        <style>
+            :host {
+                padding: 4px;
+                background-color: gray;
+            }
+            
+            svg {
+                width: 100%;
+                height: 100%;
+                cursor: crosshair;
+            }
+        </style>
+        <svg id="whiteboard" on-track="handleTrack" width$="{{width}}" height$="{{height}}" viewbox$="{{viewBox}}">
+            <g id="paths">
+                <template is="dom-repeat" items="{{paths}}" as="path">
+                    <path d$="{{pathData(path)}}" fill="none" stroke="black" stroke-width="2" />
+                </template>
+            </g>
+            <g id="current-path">
+                <polyline points$="{{greenLine}}" fill="none" stroke="lightseagreen" stroke-width="2" />
+                <template is="dom-repeat" items="{{currentPath}}" as="point">
+                    <circle cx$="{{point.x}}" cy$="{{point.y}}" fill="black" r="2" />
+                </template>
+            </g>
+        </svg>
+    </template>
+    <script>
+        (function () {
+            var doc = document.currentScript.ownerDocument;
+            var root = doc.querySelector('dom-module > template').content;
+            var templates = root.querySelectorAll('svg template');
+            var el, template, attribs, attrib, count, child, content;
+            for (var i = 0; i < templates.length; i++) {
+                el = templates[i];
+                template = el.ownerDocument.createElement('template');
+                el.parentNode.insertBefore(template, el);
+                attribs = el.attributes;
+                count = attribs.length;
+                while (count-- > 0) {
+                    attrib = attribs[count];
+                    template.setAttribute(attrib.name, attrib.value);
+                    el.removeAttribute(attrib.name);
+                }
+                el.parentNode.removeChild(el);
+                content = template.content;
+                while ((child = el.firstChild)) {
+                    content.appendChild(child);
+                }
+            }
+        })();
+
+        function Point(x, y) {
+            if (x && x.detail && x.detail.sourceEvent instanceof MouseEvent) {
+                this.x = x.detail.x;
+                this.y = x.detail.y;
+            } else if (x instanceof Point) {
+                this.x = x.x;
+                this.y = x.y;
+            } else {
+                this.x = x;
+                this.y = y;
+            }
+        };
+
+        Point.prototype.sub = function (p) {
+            this.x -= p.x;
+            this.y -= p.y;
+            return this;
+        };
+
+        Point.prototype.add = function (p) {
+            this.x += p.x;
+            this.y += p.y;
+            return this;
+        };
+
+
+        Polymer({
+
+            is: 'white-board',
+
+            attached: function () {
+                console.log(this.localName + '#' + this.id + ' was attached');
+                this.origin = new Point(-this.parent.offsetLeft, -this.parent.offsetTop);
+                this.setDimensions();
+                window.onresize = this.setDimensions.bind(this);
+            },
+
+            ready: function () {
+
+                this.parent = this.$.whiteboard.parentElement;
+
+                this.draw = true;
+                this.paths = [];
+                // mousedown device coordinates
+                this.down_dev = null;
+                // mousedown svg coordinates
+                this.down_svg = null;
+                // origin in svg coordinates on mousedown
+                this.down_ori = null;
+
+                this.currentPath = [];
+
+            },
+
+            polylineData: function (path) {
+                console.log(path);
+                return path.map(function (p) {
+                    return p.x + ' ' + p.y;
+                }).join(' ');
+            },
+
+            pathData: function (path) {
+                var ret = '';
+                if (path.length < 1)
+                    return ret;
+                ret += 'M ' + path[0][0].x + ' ' + path[0][0].y;
+                for (var i = 0; i < path.length; ++i) {
+                    ret += ' C ' +
+                        path[i][1].x + ' ' + path[i][1].y + ' ' +
+                        path[i][2].x + ' ' + path[i][2].y + ' ' +
+                        path[i][3].x + ' ' + path[i][3].y;
+                }
+                return ret;
+            },
+
+            setDimensions: function () {
+                var w = this.parent.offsetWidth;
+                var h = this.parent.offsetHeight;
+                this.width = w + "";
+                this.height = h + "";
+                this.viewBox = this.origin.x + ' ' + this.origin.y + ' ' + w + ' ' + h;
+            },
+
+            reset: function () {
+                this.currentPath = [];
+                this.down_dev = null;
+                this.down_svg = null;
+                this.down_ori = null;
+                this.greenLine = null;
+            },
+            handleTrack: function (e) {
+                switch (e.detail.state) {
+                case 'start':
+                    // mousedown may be called twice if cursor goes out of div
+                    // this needs to be fixed!
+                    if (this.down_dev)
+                        this.reset();
+                    this.down_dev = new Point(e);
+                    this.down_ori = new Point(this.origin);
+                    this.down_svg = new Point(this.down_dev).add(this.down_ori);
+                    if (this.draw) {
+                        this.push('currentPath', new Point(this.down_svg));
+                    }
+                    break;
+                case 'track':
+                    this.message = 'Tracking in progress... ' +
+                        e.detail.x + ', ' + e.detail.y;
+                    if (this.down_dev && !this.draw) {
+                        var p = new Point(e);
+                        var o = new Point(this.down_ori);
+                        this.origin = o.sub(p.sub(this.down_dev));
+                        this.setDimensions();
+                    } else if (this.down_dev && this.draw) {
+                        var cp = this.currentPath;
+                        var p = new Point(e).add(this.origin);
+                        if (p.x == cp[cp.length - 1].x && p.y == cp[cp.length - 1].y)
+                            return;
+                        this.push('currentPath', p);
+                        this.greenLine = this.polylineData(this.currentPath);
+                    }
+                    break;
+                case 'end':
+                    this.message = 'Tracking ended!';
+                    if (this.draw && this.currentPath.length > 1) {
+                        // fit bezier
+                        var path = FitCurveArray(this.currentPath, 40.0);
+                        this.push('paths', path);
+                        // send path to server
+                    }
+                    this.reset();
+                    break;
+                }
+            }
+        });
+    </script>
+</dom-module>

@@ -1,0 +1,125 @@
+<link rel="import" href="/bower_components/polymer/polymer.html">
+
+<link rel="import" href="/bower_components/google-signin/google-signin.html">
+<link rel="import" href="/bower_components/google-apis/google-client-loader.html">
+
+<!--
+Element providing information about the authenticated user.
+Needs a google-signin element included somewhere on the same page
+that handles authentication.
+-->
+<dom-module name="google-signin-status">
+    <template>
+        <style>
+            :host {
+                display: inline-block;
+            }
+            
+            .avatar-wrapper {
+                float: right;
+                margin: 2px 0;
+            }
+            
+            .avatar-image {
+                border-radius: 16px;
+                height: 32px;
+                width: 32px;
+            }
+            
+            .user-wrapper {
+                float: right;
+                margin: 2px 16px 0 0;
+                max-width: 120px;
+                text-align: right;
+            }
+            
+            .user-email:hover,
+            .user-email:focus,
+            .user-signout:hover,
+            .user-signout:focus {
+                opacity: 1;
+                text-decoration: none;
+            }
+            
+            .user-email,
+            .user-signout {
+                display: block;
+                color: #fff;
+                font-size: 13px;
+                line-height: 16px;
+                opacity: .7;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                transition: opacity .2s;
+                white-space: nowrap;
+                text-transform: lowercase;
+            }
+            
+            :link,
+            :visited {
+                outline: 0;
+                text-decoration: none;
+            }
+        </style>
+        <template is="dom-if" if="{{!signedIn}}">
+            <google-signin width="iconOnly" client-id="{{googleClientID}}" scopes="{{googleScopes}}" on-google-signin-aware-success="signIn" on-google-signin-aware-signed-out="signOut"></google-signin>
+        </template>
+        <google-client-loader id="plus" name="plus" version="v1" on-google-api-load="displayProfile"></google-client-loader>
+
+        <div>
+            <template is="dom-if" if="{{profile}}" restamp="true">
+
+                <a href="https://myaccount.google.com/" class="avatar-wrapper">
+                    <img class="avatar-image" src="{{profile.image.url}}">
+                </a>
+                <div class="user-wrapper">
+                    <a class="user-email" href="https://myaccount.google.com/">{{profile.displayName}}</a>
+                    <a class="user-signout" href="https://www.google.com/accounts/Logout?continue=/">Cerrar sesión</a>
+                </div>
+            </template>
+        </div>
+    </template>
+    <script>
+        Polymer({
+
+            is: 'google-signin-status',
+            properties: {
+                // declare properties for the element's public API
+                googleClientID: {
+                    type: String,
+                    value: "36368826216-ms9uic7h9a8pr6drl1ii5kmkctjaog7p.apps.googleusercontent.com"
+                },
+                googleScopes: {
+                    type: String,
+                    value: "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/plus.login"
+                }
+            },
+            signedIn: false,
+
+            ready: function () {
+
+                this.signedIn = false;
+
+            },
+
+            signIn: function () {
+                this.signedIn = true;
+            },
+
+            signOut: function () {
+                this.profile = null;
+                this.signedIn = false;
+            },
+            displayProfile: function () {
+                if (this.signedIn && this.$.plus.api) {
+                    var request = this.$.plus.api.people.get({
+                        "userId": "me"
+                    });
+                    request.execute(function (resp) {
+                        this.profile = resp;
+                    }.bind(this));
+                }
+            }
+        });
+    </script>
+</dom-module>

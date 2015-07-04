@@ -18,7 +18,7 @@
   "homepage": "https://github.com/jlep/ngdraw",
   "dependencies": {
     "express": "^4.1.2",
-    "sockjs": "^0.3.8"
+    "cfenv": "1.0.x"
   },
   "engines": {
     "node": "0.10.28"
