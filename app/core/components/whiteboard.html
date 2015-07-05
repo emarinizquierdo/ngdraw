@@ -1,3 +1,6 @@
+<link rel="import" href="/bower_components/paper-fab/paper-fab.html">
+<link rel="import" href="/bower_components/google-apis/google-realtime-api.html">
+
 <dom-module name="white-board">
     <template>
         <style>
@@ -6,23 +9,40 @@
                 background-color: gray;
             }
             
+            .toolbar-container {
+                position: absolute;
+                bottom: 0px;
+                right: 0px;
+            }
+            
             svg {
                 width: 100%;
                 height: 100%;
                 cursor: crosshair;
             }
         </style>
-        <svg id="whiteboard" on-track="handleTrack" width$="{{width}}" height$="{{height}}" viewbox$="{{viewBox}}">
-            <g id="paths">
-                <template is="dom-repeat" items="{{paths}}" as="path">
-                    <path d$="{{pathData(path)}}" fill="none" stroke="black" stroke-width="2" />
-                </template>
-            </g>
-            <g id="current-path">
-                <polyline points$="{{greenLine}}" fill="none" stroke="lightseagreen" stroke-width="2" />
-                <template is="dom-repeat" items="{{currentPath}}" as="point">
-                    <circle cx$="{{point.x}}" cy$="{{point.y}}" fill="black" r="2" />
-                </template>
+
+        <google-realtime-api id="realtime" on-api-load="handleRealtime"></google-realtime-api>
+
+        <div class="toolbar-container">
+            <paper-fab mini icon="image:edit" on-click="selectTool" tool-type="PENCIL"></paper-fab>
+            <paper-fab mini icon="open-with" on-click="selectTool" tool-type="HAND"></paper-fab>
+            <paper-fab mini icon="image:color-lens" on-click="{{selectTool('COLOR')}}"></paper-fab>
+            <paper-fab mini icon="favorite"></paper-fab>
+        </div>
+        <svg id="whiteboard" on-track="handleTrack" width$="{{width}}" height$="{{height}}" on-mousewheel="handlePinch">
+            <g id="group">
+                <g id="paths">
+                    <template is="dom-repeat" items="{{paths}}" as="path">
+                        <path d$="{{pathData(path)}}" fill="none" stroke="black" stroke-width="2" />
+                    </template>
+                </g>
+                <g id="current-path">
+                    <polyline points$="{{greenLine}}" fill="none" stroke="lightseagreen" stroke-width="2" />
+                    <template is="dom-repeat" items="{{currentPath}}" as="point">
+                        <circle cx$="{{point.x}}" cy$="{{point.y}}" fill="black" r="2" />
+                    </template>
+                </g>
             </g>
         </svg>
     </template>
@@ -82,18 +102,19 @@
             is: 'white-board',
 
             attached: function () {
-                console.log(this.localName + '#' + this.id + ' was attached');
-                this.origin = new Point(-this.parent.offsetLeft, -this.parent.offsetTop);
+                this.origin = new Point(this.parent.offsetLeft, this.parent.offsetTop);
                 this.setDimensions();
+                this.origin = new Point(0, 0);
                 window.onresize = this.setDimensions.bind(this);
             },
 
             ready: function () {
 
                 this.parent = this.$.whiteboard.parentElement;
-
                 this.draw = true;
                 this.paths = [];
+                this.collaborativePaths;
+
                 // mousedown device coordinates
                 this.down_dev = null;
                 // mousedown svg coordinates
@@ -105,8 +126,25 @@
 
             },
 
+            selectTool: function (e) {
+                switch (e.currentTarget.getAttribute('tool-type')) {
+                case 'PENCIL':
+                    if (this.draw) return;
+                    this.draw = true;
+                    this.origin.x -= this.parent.offsetLeft
+                    this.origin.y -= this.parent.offsetTop
+                    break;
+                case 'HAND':
+                    if (!this.draw) return;
+                    this.draw = false;
+                    this.origin.x += this.parent.offsetLeft
+                    this.origin.y += this.parent.offsetTop
+                    break;
+                case 'COLOR':
+                    break;
+                }
+            },
             polylineData: function (path) {
-                console.log(path);
                 return path.map(function (p) {
                     return p.x + ' ' + p.y;
                 }).join(' ');
@@ -131,7 +169,7 @@
                 var h = this.parent.offsetHeight;
                 this.width = w + "";
                 this.height = h + "";
-                this.viewBox = this.origin.x + ' ' + this.origin.y + ' ' + w + ' ' + h;
+                this.$.whiteboard.setAttribute('viewBox', this.origin.x + ' ' + this.origin.y + ' ' + w + ' ' + h);
             },
 
             reset: function () {
@@ -140,6 +178,17 @@
                 this.down_svg = null;
                 this.down_ori = null;
                 this.greenLine = null;
+            },
+            handlePinch: function (e) {
+                /*
+                                var _zoom = this.$.whiteboard.setAttribute;
+                                if (e.wheelDelta > 0) {
+                                    _zoom++;
+                                } else {
+                                    _zoom--;
+                                }
+                                this.$.whiteboard.group('transform', _zoom);
+                */
             },
             handleTrack: function (e) {
                 switch (e.detail.state) {
@@ -156,8 +205,7 @@
                     }
                     break;
                 case 'track':
-                    this.message = 'Tracking in progress... ' +
-                        e.detail.x + ', ' + e.detail.y;
+
                     if (this.down_dev && !this.draw) {
                         var p = new Point(e);
                         var o = new Point(this.down_ori);
@@ -178,11 +226,85 @@
                         // fit bezier
                         var path = FitCurveArray(this.currentPath, 40.0);
                         this.push('paths', path);
+                        this.collaborativePaths.setText(JSON.stringify(this.paths));
                         // send path to server
                     }
                     this.reset();
                     break;
                 }
+            },
+            handleRealtime: function (e) {
+
+                var that = this;
+
+                var _realtimeGapi = this.$.realtime.api;
+
+                var clientId = '36368826216-ms9uic7h9a8pr6drl1ii5kmkctjaog7p.apps.googleusercontent.com';
+
+                if (!/^([0-9])$/.test(clientId[0])) {
+                    alert('Invalid Client ID - did you forget to insert your application Client ID?');
+                }
+                // Create a new instance of the realtime utility with your client ID.
+                var realtimeUtils = new utils.RealtimeUtils({
+                    clientId: clientId
+                });
+
+                authorize();
+
+                function authorize() {
+                    // Attempt to authorize
+                    realtimeUtils.authorize(function (response) {
+                        if (response.error) {
+                            // Authorization failed because this is the first time the user has used your application,
+                            // show the authorize button to prompt them to authorize manually.
+
+                            realtimeUtils.authorize(function (response) {
+                                start();
+                            }, true);
+
+                        } else {
+                            start();
+                        }
+                    }, false);
+                }
+
+                function start() {
+                    // With auth taken care of, load a file, or create one if there
+                    // is not an id in the URL.
+                    var id = realtimeUtils.getParam('id');
+                    if (id) {
+                        // Load the document id from the URL
+                        realtimeUtils.load(id.replace('/', ''), onFileLoaded, onFileInitialize);
+                    } else {
+                        // Create a new document, add it to the URL
+                        realtimeUtils.createRealtimeFile('New Quickstart File', function (createResponse) {
+                            window.history.pushState(null, null, '?id=' + createResponse.id);
+                            realtimeUtils.load(createResponse.id, onFileLoaded, onFileInitialize);
+                        });
+                    }
+                }
+
+                // The first time a file is opened, it must be initialized with the
+                // document structure. This function will add a collaborative string
+                // to our model at the root.
+                function onFileInitialize(model) {
+                    var string = model.createString();
+                    model.getRoot().set('demo_string', string);
+                }
+
+                // After a file has been initialized and loaded, we can access the
+                // document. We will wire up the data model to the UI.
+                function onFileLoaded(doc) {
+                    that.collaborativePaths = doc.getModel().getRoot().get('demo_string');
+
+
+                    that.collaborativePaths.addEventListener(gapi.drive.realtime.EventType.TEXT_INSERTED, function (data) {
+                        if (data.isLocal) return;
+                        that.paths = JSON.parse(that.collaborativePaths.text);
+                    });
+
+                }
+
             }
         });
     </script>
