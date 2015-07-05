@@ -64,17 +64,20 @@ that handles authentication.
         <template is="dom-if" if="{{!signedIn}}">
             <google-signin width="iconOnly" client-id="{{googleClientID}}" scopes="{{googleScopes}}" on-google-signin-aware-success="signIn" on-google-signin-aware-signed-out="signOut"></google-signin>
         </template>
-        <google-client-loader id="plus" name="plus" version="v1" on-google-api-load="displayProfile"></google-client-loader>
+
+        <template is="dom-if" if="{{signedIn}}">
+            <google-client-loader id="plus" name="plus" version="v1" on-google-api-load="displayProfile"></google-client-loader>
+        </template>
 
         <div>
-            <template is="dom-if" if="{{profile}}" restamp="true">
+            <template is="dom-if" if="{{profile}}">
 
                 <a href="https://myaccount.google.com/" class="avatar-wrapper">
                     <img class="avatar-image" src="{{profile.image.url}}">
                 </a>
                 <div class="user-wrapper">
                     <a class="user-email" href="https://myaccount.google.com/">{{profile.displayName}}</a>
-                    <a class="user-signout" href="https://www.google.com/accounts/Logout?continue=/">Cerrar sesión</a>
+                    <a class="user-signout" href="https://www.google.com/accounts/Logout">Cerrar sesión</a>
                 </div>
             </template>
         </div>
@@ -104,6 +107,7 @@ that handles authentication.
 
             signIn: function () {
                 this.signedIn = true;
+                this.fire('signed');
             },
 
             signOut: function () {
@@ -111,12 +115,13 @@ that handles authentication.
                 this.signedIn = false;
             },
             displayProfile: function () {
-                if (this.signedIn && this.$.plus.api) {
-                    var request = this.$.plus.api.people.get({
+                if (this.signedIn && this.querySelector('#plus').api) {
+                    var request = this.querySelector('#plus').api.people.get({
                         "userId": "me"
                     });
                     request.execute(function (resp) {
                         this.profile = resp;
+                        this.fire('signed');
                     }.bind(this));
                 }
             }

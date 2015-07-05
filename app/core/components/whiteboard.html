@@ -22,7 +22,9 @@
             }
         </style>
 
-        <google-realtime-api id="realtime" on-api-load="handleRealtime"></google-realtime-api>
+        <template is="dom-if" if="{{signin}}">
+            <google-realtime-api id="realtime" on-api-load="handleRealtime"></google-realtime-api>
+        </template>
 
         <div class="toolbar-container">
             <paper-fab mini icon="image:edit" on-click="selectTool" tool-type="PENCIL"></paper-fab>
@@ -102,14 +104,20 @@
             is: 'white-board',
 
             attached: function () {
+                var that = this;
                 this.origin = new Point(this.parent.offsetLeft, this.parent.offsetTop);
                 this.setDimensions();
                 this.origin = new Point(0, 0);
                 window.onresize = this.setDimensions.bind(this);
+                var _google_signin = document.querySelector('google-signin-status');
+                _google_signin.addEventListener('signed', function (data) {
+                    that.signin = true;
+                })
             },
 
             ready: function () {
 
+                this.signin = false;
                 this.parent = this.$.whiteboard.parentElement;
                 this.draw = true;
                 this.paths = [];
@@ -123,6 +131,8 @@
                 this.down_ori = null;
 
                 this.currentPath = [];
+
+
 
             },
 
@@ -237,7 +247,7 @@
 
                 var that = this;
 
-                var _realtimeGapi = this.$.realtime.api;
+                var _realtimeGapi = this.querySelector('#realtime').api;
 
                 var clientId = '36368826216-ms9uic7h9a8pr6drl1ii5kmkctjaog7p.apps.googleusercontent.com';
 
