@@ -306,8 +306,9 @@
                 // document. We will wire up the data model to the UI.
                 function onFileLoaded(doc) {
                     that.collaborativePaths = doc.getModel().getRoot().get('demo_string');
-
-
+                    if (that.collaborativePaths.text) {
+                        that.paths = JSON.parse(that.collaborativePaths.text);
+                    }
                     that.collaborativePaths.addEventListener(gapi.drive.realtime.EventType.TEXT_INSERTED, function (data) {
                         if (data.isLocal) return;
                         that.paths = JSON.parse(that.collaborativePaths.text);
